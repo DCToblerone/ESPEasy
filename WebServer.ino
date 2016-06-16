@@ -1747,6 +1747,16 @@ boolean handle_json()
       byte BaseVarIndex = TaskIndex * VARS_PER_TASK;
       byte DeviceIndex = getDeviceIndex(Settings.TaskDeviceNumber[TaskIndex]);
       LoadTaskSettings(TaskIndex);
+
+      struct EventStruct TempEvent;
+      TempEvent.TaskIndex = TaskIndex;
+      TempEvent.BaseVarIndex = BaseVarIndex;
+      TempEvent.idx = Settings.TaskDeviceID[TaskIndex];
+      TempEvent.sensorType = Device[DeviceIndex].VType;
+      
+      if(Settings.TaskDeviceDataFeed[TaskIndex] == 0)  // only read local connected sensorsfeeds
+        PluginCall(PLUGIN_READ, &TempEvent, dummyString);
+
       reply += F("{\n");
 
       reply += F("\"TaskName\": \"");
