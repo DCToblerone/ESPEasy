@@ -18,15 +18,23 @@ void Plugin_003_pulse_interrupt6() ICACHE_RAM_ATTR;
 void Plugin_003_pulse_interrupt7() ICACHE_RAM_ATTR;
 void Plugin_003_pulse_interrupt8() ICACHE_RAM_ATTR;
 
-unsigned long Plugin_003_pulseCounter[TASKS_MAX];
-unsigned long Plugin_003_pulseTotalCounter[TASKS_MAX];
-unsigned long Plugin_003_pulseTime[TASKS_MAX];
-unsigned long Plugin_003_pulseTimePrevious[TASKS_MAX];
+#define NUM_HIST 6
+
+typedef struct {
+  unsigned long Counter;
+  unsigned long Total;
+  unsigned long Time[NUM_HIST];
+  unsigned long Previous;
+  byte iTime; // 0 .. NUM_HIST-1
+} Plugin_003_Data;
+
+Plugin_003_Data p3data[TASKS_MAX];
 
 boolean Plugin_003(byte function, struct EventStruct *event, String& string)
 {
   boolean success = false;
-
+  Plugin_003_Data &d = p3data[event?event->TaskIndex:0];
+  
   switch (function)
   {
 
@@ -108,18 +116,27 @@ boolean Plugin_003(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_WEBFORM_SHOW_VALUES:
       {
+        byte i, j;
         string += F("<div class=\"div_l\">");
         string += ExtraTaskSettings.TaskDeviceValueNames[0];
         string += F(":</div><div class=\"div_r\">");
-        string += Plugin_003_pulseCounter[event->TaskIndex];
+        string += d.Counter;
         string += F("</div><div class=\"div_br\"></div><div class=\"div_l\">");
         string += ExtraTaskSettings.TaskDeviceValueNames[1];
         string += F(":</div><div class=\"div_r\">");
-        string += Plugin_003_pulseTotalCounter[event->TaskIndex];
+        string += d.Total;
         string += F("</div><div class=\"div_br\"></div><div class=\"div_l\">");
         string += ExtraTaskSettings.TaskDeviceValueNames[2];
         string += F(":</div><div class=\"div_r\">");
-        string += Plugin_003_pulseTime[event->TaskIndex];
+//      string += d.Time[d.iTime];
+        string += millis() - d.Previous;
+        if (d.iTime>=NUM_HIST) d.iTime = 0; // not sure how this could ever happen
+	      for (i=0,j=d.iTime;i<NUM_HIST;i++) {
+              string += F(",");
+		      string += d.Time[j];
+          if (j==0) j=NUM_HIST;
+          j--;
+        }
         string += F("</div>");
         success = true;
         break;
@@ -138,34 +155,34 @@ boolean Plugin_003(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_READ:
       {
-        UserVar[event->BaseVarIndex] = Plugin_003_pulseCounter[event->TaskIndex];
-        UserVar[event->BaseVarIndex+1] = Plugin_003_pulseTotalCounter[event->TaskIndex];
-        UserVar[event->BaseVarIndex+2] = Plugin_003_pulseTime[event->TaskIndex];
+        UserVar[event->BaseVarIndex] = d.Counter;
+        UserVar[event->BaseVarIndex+1] = d.Total;
+        UserVar[event->BaseVarIndex+2] = d.Time[d.iTime];
 
         switch (Settings.TaskDevicePluginConfig[event->TaskIndex][1])
         {
           case 0:
           {
             event->sensorType = SENSOR_TYPE_SINGLE;
-            UserVar[event->BaseVarIndex] = Plugin_003_pulseCounter[event->TaskIndex];
+            UserVar[event->BaseVarIndex] = d.Counter;
             break;
           }
           case 1:
           {
             event->sensorType = SENSOR_TYPE_TRIPLE;
-            UserVar[event->BaseVarIndex] = Plugin_003_pulseCounter[event->TaskIndex];
-            UserVar[event->BaseVarIndex+1] = Plugin_003_pulseTotalCounter[event->TaskIndex];
-            UserVar[event->BaseVarIndex+2] = Plugin_003_pulseTime[event->TaskIndex];
+            UserVar[event->BaseVarIndex] = d.Counter;
+            UserVar[event->BaseVarIndex+1] = d.Total;
+            UserVar[event->BaseVarIndex+2] = d.Time[d.iTime];
             break;
           }
           case 2:
           {
             event->sensorType = SENSOR_TYPE_SINGLE;
-            UserVar[event->BaseVarIndex] = Plugin_003_pulseTotalCounter[event->TaskIndex];
+            UserVar[event->BaseVarIndex] = d.Total;
             break;
           }
         }
-        Plugin_003_pulseCounter[event->TaskIndex] = 0;
+        d.Counter = 0;
         success = true;
         break;
       }
@@ -179,13 +196,17 @@ boolean Plugin_003(byte function, struct EventStruct *event, String& string)
 \*********************************************************************************************/
 void Plugin_003_pulsecheck(byte Index)
 {
-  unsigned long PulseTime=millis() - Plugin_003_pulseTimePrevious[Index];
+  unsigned long t=millis();
+  Plugin_003_Data &d=p3data[Index];
+  unsigned long PulseTime=t - d.Previous;
+  
   if(PulseTime > Settings.TaskDevicePluginConfig[Index][0]) // check with debounce time for this task
     {
-      Plugin_003_pulseCounter[Index]++;
-      Plugin_003_pulseTotalCounter[Index]++;
-      Plugin_003_pulseTime[Index] = PulseTime;
-      Plugin_003_pulseTimePrevious[Index]=millis();
+      d.Counter++;
+      d.Total++;
+      d.iTime++; if (d.iTime>=NUM_HIST) d.iTime=0;
+      d.Time[d.iTime] = PulseTime;
+      d.Previous=t;
     }
 }
 
