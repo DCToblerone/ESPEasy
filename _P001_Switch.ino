@@ -150,6 +150,7 @@ boolean Plugin_001(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_TEN_PER_SECOND:
       {
+        success = true;
         byte state = digitalRead(Settings.TaskDevicePin1[event->TaskIndex]);
         if (state != switchstate[event->TaskIndex])
         {
@@ -180,10 +181,28 @@ boolean Plugin_001(byte function, struct EventStruct *event, String& string)
               sendState = !outputstate[event->TaskIndex];
             UserVar[event->BaseVarIndex] = sendState;
             event->sensorType = SENSOR_TYPE_SWITCH;
-            if ((sendState == 1) && (Settings.TaskDevicePluginConfig[event->TaskIndex][0] == 2))
+            if (Settings.TaskDevicePluginConfig[event->TaskIndex][0] == 2)
             {
-              event->sensorType = SENSOR_TYPE_DIMMER;
-              UserVar[event->BaseVarIndex] = Settings.TaskDevicePluginConfig[event->TaskIndex][1];
+              if (sendState == 0) // if all related outputs are off, send event
+              {
+                byte x;
+                for (x = 0; x < TASKS_MAX; x++)
+                {
+                  if (x != event->TaskIndex && Settings.TaskDeviceID[x] == event->idx && Settings.TaskDeviceNumber[x] == 1) // temp solution, if input switch
+                  {
+                      byte ps = digitalRead(Settings.TaskDevicePin1[x]);
+                      if (Settings.TaskDevicePin1Inversed[x]) ps = !ps;
+                      if (ps) break;
+                  }
+                }
+                if (x < TASKS_MAX) // there was one related one that is on, so don't sent data
+                  break;
+              }
+              else // send dimmer level
+              { 
+                event->sensorType = SENSOR_TYPE_DIMMER;
+                UserVar[event->BaseVarIndex] = Settings.TaskDevicePluginConfig[event->TaskIndex][1];
+              }
             }
             String log = F("SW   : State ");
             log += sendState;
@@ -191,7 +210,6 @@ boolean Plugin_001(byte function, struct EventStruct *event, String& string)
             sendData(event);
           }
         }
-        success = true;
         break;
       }
 
@@ -223,6 +241,32 @@ boolean Plugin_001(byte function, struct EventStruct *event, String& string)
             addLog(LOG_LEVEL_INFO, log);
             SendStatus(event->Source, getPinStateJSON(SEARCH_PIN_STATE, PLUGIN_ID_001, event->Par1, log, 0));
           }
+        }
+        if (command == F("level")) // dimmer
+        {
+          log = String(F("SW   : LEVEL ")) + String(event->Par1) + String(F(" Set to ")) + String(event->Par2);
+          addLog(LOG_LEVEL_INFO, log);
+          for (byte x = 0; x < TASKS_MAX; x++)
+          {
+            if (Settings.TaskDeviceID[x] == event->Par1 && Settings.TaskDeviceNumber[x] == 1) // temp solution, if input switch
+            {
+              success = true;
+              byte pin = Settings.TaskDevicePin1[x];
+              byte level = Settings.TaskDevicePluginConfig[x][1];
+              byte ps = digitalRead(pin);
+              if (Settings.TaskDevicePin1Inversed[x]) ps = !ps;
+              if (level == event->Par2 && !ps || level != event->Par2 && ps) // need to toggle this switch
+              {
+                if (!Settings.TaskDevicePin1Inversed[x]) ps = !ps;
+                pinMode(pin, OUTPUT);
+                digitalWrite(pin, ps);
+                setPinState(PLUGIN_ID_001, pin, PIN_MODE_OUTPUT, ps);
+                log = String(F("SW   : GPIO ")) + String(pin) + String(F(" Set to ")) + String(ps);
+                addLog(LOG_LEVEL_INFO, log);
+              }
+            }
+          }
+          SendStatus(event->Source, success?"OK":" Error: IDX " + String(event->Par1) + " not found");
         }
 
         if (command == F("pwm"))
