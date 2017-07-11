@@ -302,6 +302,40 @@ boolean Plugin_001(byte function, struct EventStruct *event, String& string)
         }
         #endif
 
+        #ifdef PLUGIN_BUILD_TESTING
+
+        if (command == F("rtttl"))
+        {
+          success = true;
+          if (event->Par1 >= 0 && event->Par1 <= 16)
+          {
+            pinMode(event->Par1, OUTPUT);
+            char sng[1024] ="";
+            string.replace("-","#");
+            string.toCharArray(sng, 1024);
+            play_rtttl(event->Par1, sng);
+            setPinState(PLUGIN_ID_001, event->Par1, PIN_MODE_OUTPUT, event->Par2);
+            log = String(F("SW   : ")) + string;
+            addLog(LOG_LEVEL_INFO, log);
+            SendStatus(event->Source, getPinStateJSON(SEARCH_PIN_STATE, PLUGIN_ID_001, event->Par1, log, 0));
+          }
+        }
+
+        if (command == F("tone"))
+        {
+          success = true;
+          if (event->Par1 >= 0 && event->Par1 <= 16)
+          {
+            pinMode(event->Par1, OUTPUT);
+            tone(event->Par1, event->Par2, event->Par3);
+            setPinState(PLUGIN_ID_001, event->Par1, PIN_MODE_OUTPUT, event->Par2);
+            log = String(F("SW   : ")) + string;
+            addLog(LOG_LEVEL_INFO, log);
+            SendStatus(event->Source, getPinStateJSON(SEARCH_PIN_STATE, PLUGIN_ID_001, event->Par1, log, 0));
+          }
+        }
+        #endif
+
         if (command == F("pwm"))
         {
           success = true;
